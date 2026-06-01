@@ -1,12 +1,11 @@
 """
 Módulo: pablo.py
 Descripción: Dashboard de control analítico integrado de alto rendimiento físico.
-            Lectura unificada mediante URL directa por solicitud HTTP estándar de Pandas,
-            evitando fallas de inicialización del backend de GSheetsConnection, 
-            y escritura segura mediante HTTP POST (Google Forms).
+            Lectura unificada mediante URL directa por solicitud HTTP estándar de Pandas
+            y escritura funcional mediante HTTP POST hacia el Google Form del usuario.
 Autor: Desarrollo de Productos de Software
 Fecha: Junio 2026
-Versión: 5.1.0
+Versión: 5.2.1
 """
 
 import pandas as pd
@@ -99,8 +98,8 @@ df_maestro = cargar_y_limpiar_datos()
 with st.sidebar:
     st.write("## 📝 REGISTRAR ENTRENAMIENTO")
     
-    # REEMPLAZAR con la URL de respuestas de tu Google Form personalizado
-    FORM_URL = "https://docs.google.com/forms/u/0/d/e/1FAIpQLSdpwUqVwU8_M-p0zXW0RkE3A3-N4u_0xK-TzN8rB89gX_EXAMPLE/formResponse"
+    # URL real del endpoint de respuestas proporcionada por el usuario
+    FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdzk-Oy7iMUyHf4C5zKyxffYvOp1dzeS0tHUufWRaP3bMoGjQ/formResponse"
     
     with st.form("formulario_gsheets", clear_on_submit=True):
         input_fecha = st.date_input("Fecha del entrenamiento:")
@@ -119,19 +118,20 @@ with st.sidebar:
         boton_enviar = st.form_submit_button("Subir a Google Sheets")
 
         if boton_enviar:
-            # Diccionario de mapeo de entradas correspondientes a Google Forms
-            # IMPORTANTE: Reemplazar 'entry.XXXXX' con los IDs reales de tu formulario inspeccionado
+            # Diccionario mapeado con los IDs reales extraídos por el usuario mediante inspección HTML
             form_data = {
-                "entry.1000001": input_fecha.strftime("%d/%m/%Y"),
-                "entry.1000002": input_actividad,
-                "entry.1000003": input_tiempo,
-                "entry.1000004": str(input_distancia),
-                "entry.1000005": str(input_calorias),
-                "entry.1000006": str(input_bpm)
+                "entry.942082604_year": input_fecha.strftime("%Y"),
+                "entry.942082604_month": input_fecha.strftime("%m"),
+                "entry.942082604_day": input_fecha.strftime("%d"),
+                "entry.1561724640": input_actividad,
+                "entry.966793004": input_tiempo,
+                "entry.2030105811": str(input_distancia),
+                "entry.1379980773": str(input_calorias),
+                "entry.1691973695": str(input_bpm)
             }
             
             try:
-                # Envío asíncrono seguro vía HTTP POST sin necesidad de tokens Oauth2
+                # Envío de parámetros mediante mutación HTTP POST de protocolo abierto
                 response = requests.post(FORM_URL, data=form_data)
                 if response.status_code == 200:
                     st.success("¡Datos enviados a la base de datos con éxito!")
