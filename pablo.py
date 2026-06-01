@@ -1,32 +1,76 @@
+"""
+Módulo: pablo.py
+Descripción: Dashboard de control analítico para el seguimiento de rendimiento físico.
+Autor: Desarrollo de Productos de Software
+Fecha: Junio 2026
+Versión: 1.0.0
+"""
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# Configuración de la página estilo Dashboard Oscuro
-st.set_page_config(layout="wide", page_title="Panel de Control - Entrenamiento")
+# ========================================================================================
+# CONFIGURACIÓN DE LA INTERFAZ DE USUARIO
+# ========================================================================================
+st.set_page_config(
+    layout="wide",
+    page_title="Panel de Control - Entrenamiento",
+    initial_sidebar_state="collapsed",
+)
 
-# Estilo CSS personalizado para fondo oscuro profundo
+# Inyección de estilos CSS para la personalización del tema oscuro (Cyberpunk Dark Mode)
 st.markdown(
     """
     <style>
-    .stApp { background-color: #0b111e; color: #ffffff; }
-    h1, h2, h3 { color: #00f2fe !important; }
-    div[data-testid="stMetricValue"] { color: #00f2fe !important; }
+    .stApp { 
+        background-color: #0b111e; 
+        color: #ffffff; 
+    }
+    h1, h2, h3 { 
+        color: #00f2fe !important; 
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    div[data-testid="stMetricValue"] { 
+        color: #00f2fe !important; 
+        font-size: 2.2rem !important;
+        font-weight: 700;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #8fa0bc !important;
+    }
+    .stSelectbox label {
+        color: #8fa0bc !important;
+    }
+    div[data-testid="stCaptionCustom"] {
+        font-size: 0.9rem !important;
+    }
+    hr {
+        border-color: #1e293b !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# 1. CARGA Y LIMPIEZA DE DATOS 
-@st.cache_data(ttl=600)  # Se actualiza solo cada 10 minutos
-def cargar_datos():
-    url_google_sheets = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
-    df = pd.read_csv(url_google_sheets)
+# ========================================================================================
+# CAPA DE ACCESO Y PROCESAMIENTO DE DATOS (ETL)
+# ========================================================================================
+@st.cache_data(ttl=600)
+def cargar_y_limpiar_datos() -> pd.DataFrame:
+    """
+    Carga el set de datos desde el origen de datos unificado y ejecuta las transformaciones
+    limpieza de anomalías de hardware y normalización de tipos.
+    """
+    # En entorno de producción, reemplazar esta ruta local por la URL pública del CSV de Google Sheets
+    ruta_origen = "Proyecto pablo - Hoja 1.csv"
+    df = pd.read_csv(ruta_origen)
 
+    # Conversión del campo temporal con manejo estricto de formato regional (Day-First)
     df["fecha_dt"] = pd.to_datetime(df["fecha [DD/MM/YYYY]"], dayfirst=True)
 
-    # Creamos columnas limpias
+    # Sanitización de variables métricas continuas
     df["distancia_limpia"] = pd.to_numeric(
         df["distancia [Km]"], errors="coerce"
     ).fillna(0)
@@ -34,12 +78,13 @@ def cargar_datos():
         df["calorías [Kcal]"], errors="coerce"
     ).fillna(0)
 
+    # Filtrado analítico de anomalías de lectura en sensores de frecuencia cardíaca (>220 BPM)
     df["bpm_limpio"] = pd.to_numeric(
         df["ritmo cardíaco [BPM]"], errors="coerce"
     )
     df.loc[df["bpm_limpio"] > 220, "bpm_limpio"] = None
 
-    # Extraer Mes y Año para los filtros del mapa
+    # Agrupaciones temporales relativas para cálculos de volumen semanal y mensual
     df["Mes_Año"] = df["fecha_dt"].dt.strftime("%B %Y").str.capitalize()
     df["Semana"] = df["fecha_dt"].dt.isocalendar().week
     df["Semana_Label"] = "Sem " + (df["Semana"] - df["Semana"].min() + 1).astype(
@@ -49,77 +94,90 @@ def cargar_datos():
     return df
 
 
-df_original = cargar_datos()
-
-# --- ENCABEZADO ---
-st.title("📊 PANEL DE CONTROL - ENTRENAMIENTO")
+# Inicialización del DataFrame maestro
+df_maestro = cargar_y_limpiar_datos()
 
 # ========================================================================================
-#   FILTROS GENERALES
+# COMPONENTE: ENCABEZADO PRINCIPAL
 # ========================================================================================
-st.write("### 🎛️ FILTROS GENERALES")
+st.title("PANEL DE CONTROL – ENTRENAMIENTO")
+st.write("---")
+
+# ========================================================================================
+# COMPONENTE: CONTROLES DE SEGMENTACIÓN (FILTROS)
+# ========================================================================================
 col_f1, col_f2 = st.columns(2)
 
 with col_f1:
-    meses_disponibles = ["Todos"] + list(df_original["Mes_Año"].unique())
-    mes_seleccionado = st.selectbox("Seleccionar Mes:", meses_disponibles)
+    listado_meses = ["Todos"] + list(df_maestro["Mes_Año"].unique())
+    mes_filtro = st.selectbox("MES:", listado_meses, index=0)
 
 with col_f2:
-    actividades_disponibles = ["Todas"] + list(df_original["actividad"].unique())
-    actividad_seleccionada = st.selectbox(
-        "Seleccionar Actividad:", actividades_disponibles
-    )
+    listado_actividades = ["Todas"] + list(df_maestro["actividad"].unique())
+    actividad_filtro = st.selectbox("ACTIVIDAD:", listado_actividades, index=0)
 
-# Aplicar filtros al DataFrame
-df = df_original.copy()
-if mes_seleccionado != "Todos":
-    df = df[df["Mes_Año"] == mes_seleccionado]
-if actividad_seleccionada != "Todas":
-    df = df[df["actividad"] == actividad_seleccionada]
+# Aplicación de reglas de filtrado dinámico sobre el set de datos maestro
+df_filtrado = df_maestro.copy()
+if mes_filtro != "Todos":
+    df_filtrado = df_filtrado[df_filtrado["Mes_Año"] == mes_filtro]
+if actividad_filtro != "Todas":
+    df_filtrado = df_filtrado[df_filtrado["actividad"] == actividad_filtro]
 
 st.write("---")
 
 # ========================================================================================
-#   INDICADORES PRINCIPALES
+# COMPONENTE: TARJETAS DE INDICADORES CLAVE (KPI METRICS)
 # ========================================================================================
 st.write("### 【 INDICADORES PRINCIPALES 】")
-col1, col2, col3 = st.columns(3)
+col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
 
-km_totales = df["distancia_limpia"].sum()
-bpm_promedio = df["bpm_limpio"].mean()
-calorias_totales = df["calorias_limpias"].sum()
+# Cálculo de agregaciones requeridas por las tarjetas KPI
+volumen_km_periodo = df_filtrado["distancia_limpia"].sum()
+frecuencia_cardiaca_media = df_filtrado["bpm_limpio"].mean()
+gasto_calorico_acumulado = df_filtrado["calorias_limpias"].sum()
 
-with col1:
-    # Lógica de estatus basado en el mapa
-    status_km = "OPTIMO" if km_totales > 20 else "EN PROGRESO"
-    st.metric(label="KM TOTALES (PERIODO)", value=f"{km_totales:.2f} Km")
-    st.caption(f"Status: **{status_km}**")
-
-with col2:
-    # Lógica de estatus cardíaco
-    status_bpm = "ZONA GRASA" if 100 <= bpm_promedio <= 130 else "CARDIO"
-    val_bpm = f"{int(bpm_promedio)} BPM" if not pd.isna(bpm_promedio) else "0 BPM"
-    st.metric(label="RITMO CARDÍACO PROMEDIO", value=val_bpm)
-    st.caption(f"Status: **{status_bpm}**")
-
-with col3:
+with col_kpi1:
+    # Evaluación del estado volumétrico respecto a umbrales de rendimiento básicos
+    estado_volumen = "OPTIMO" if volumen_km_periodo >= 20.0 else "EN PROGRESO"
     st.metric(
-        label="CALORÍAS ACUMULADAS", value=f"{calorias_totales:,.0f} Kcal"
+        label="KM TOTALES (PERIODO)", value=f"{volumen_km_periodo:.2f} Km"
     )
-    st.caption("Status: **Semana de Cierre**")
+    st.markdown(f"Status: <span style='color:#00f2fe; font-weight:bold;'>[{estado_volumen}]</span>", unsafe_allow_html=True)
+
+with col_kpi2:
+    # Determinación de zona fisiológica de entrenamiento basada en la frecuencia cardíaca media
+    if pd.isna(frecuencia_cardiaca_media):
+        valor_bpm_str, estado_fisiologico = "0 BPM", "SIN REGISTRO"
+    else:
+        valor_bpm_str = f"{int(frecuencia_cardiaca_media)} BPM"
+        estado_fisiologico = (
+            "ZONA GRASA" if 100 <= frecuencia_cardiaca_media <= 130 else "CARDIO"
+        )
+
+    st.metric(label="RITMO CARDÍACO PROMEDIO", value=valor_bpm_str)
+    st.markdown(f"Status: <span style='color:#ff8710; font-weight:bold;'>[{estado_fisiologico}]</span>", unsafe_allow_html=True)
+
+with col_kpi3:
+    st.metric(
+        label="CALORÍAS ACUMULADAS",
+        value=f"{gasto_calorico_acumulado:,.0f} Kcal",
+    )
+    st.markdown("Status: <span style='color:#8fa0bc;'>[Semana de Cierre]</span>", unsafe_allow_html=True)
 
 st.write("---")
 
 # ========================================================================================
-#   GRÁFICOS DE CONTROL
+# COMPONENTE: GRÁFICOS DE CONTROL ANÁLITICO
 # ========================================================================================
 st.write("### 【 GRÁFICOS DE CONTROL 】")
-col_left, col_right = st.columns(2)
+col_grafico_izq, col_grafico_der = st.columns(2)
 
-with col_left:
-    st.subheader("GRÁFICO A: Volumen de Kilómetros por Semana")
-    fig_a = px.bar(
-        df,
+with col_grafico_izq:
+    st.write("#### GRÁFICO A: VOLUMEN DE KILÓMETROS POR SEMANA")
+
+    # Generación del gráfico de columnas apiladas por clúster semanal
+    fig_columnas_apiladas = px.bar(
+        df_filtrado,
         x="Semana_Label",
         y="distancia_limpia",
         color="actividad",
@@ -127,29 +185,77 @@ with col_left:
         template="plotly_dark",
         color_discrete_sequence=["#00adb5", "#ff8710", "#3f72af", "#e12345"],
     )
-    # Línea de Meta
-    fig_a.add_hline(
+
+    # Proyección lineal estática del umbral objetivo de rendimiento (Meta de Planta)
+    fig_columnas_apiladas.add_hline(
         y=20,
         line_dash="dash",
-        line_color="red",
+        line_color="#ff2e93",
         annotation_text="Meta de Planta: 20 Km",
+        annotation_position="top left",
     )
-    fig_a.update_layout(
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
-    )
-    st.plotly_chart(fig_a, use_container_width=True)
 
-with col_right:
-    st.subheader("GRÁFICO B: Distribución de Carga (Eficiencia)")
-    fig_b = px.pie(
-        df,
+    fig_columnas_apiladas.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(title=dict(text="Actividad"), orientation="h", y=-0.2),
+    )
+    st.plotly_chart(fig_columnas_apiladas, use_container_width=True)
+
+with col_grafico_der:
+    st.write("#### GRÁFICO B: DISTRIBUCIÓN DE CARGA (EFICIENCIA)")
+
+    # Generación de la gráfica de anillo para la distribución proporcional del gasto calórico
+    fig_anillo_eficiencia = px.pie(
+        df_filtrado,
         values="calorias_limpias",
         names="actividad",
         hole=0.4,
         template="plotly_dark",
         color_discrete_sequence=["#00adb5", "#ff8710", "#3f72af", "#e12345"],
     )
-    fig_b.update_layout(
+
+    fig_anillo_eficiencia.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", y=-0.2),
+    )
+    st.plotly_chart(fig_anillo_eficiencia, use_container_width=True)
+
+st.write("---")
+
+# ========================================================================================
+# COMPONENTE: EVOLUCIÓN HISTÓRICA CONTINUA (KILÓMETROS ACUMULADOS)
+# ========================================================================================
+st.write("#### EVOLUCIÓN DE KILÓMETROS ACUMULADOS (PROGRESO TOTAL)")
+
+# Aislamiento analítico de datos volumétricos históricos para evitar roturas por filtrado cero
+df_linea_historica = df_maestro[df_maestro["distancia_limpia"] > 0].sort_values(
+    "fecha_dt"
+)
+
+if not df_linea_historica.empty:
+    df_linea_historica["KM_Acumulados"] = df_linea_historica[
+        "distancia_limpia"
+    ].cumsum()
+
+    # Modelado de la serie de tiempo para la proyección acumulada de distancia
+    fig_linea_progreso = px.line(
+        df_linea_historica,
+        x="fecha_dt",
+        y="KM_Acumulados",
+        labels={
+            "fecha_dt": "Línea de Tiempo",
+            "KM_Acumulados": "Kilómetros Totales",
+        },
+        template="plotly_dark",
+        markers=True,
+    )
+
+    fig_linea_progreso.update_traces(line=dict(color="#00f2fe", width=3))
+    fig_linea_progreso.update_layout(
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
     )
-    st.plotly_chart(fig_b, use_container_width=True)
+    st.plotly_chart(fig_linea_progreso, use_container_width=True)
+else:
+    st.info("No se registran vectores de distancia válidos en el histórico.")
