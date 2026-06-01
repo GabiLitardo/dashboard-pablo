@@ -22,7 +22,7 @@ st.markdown(
 @st.cache_data(ttl=600)  # Se actualiza solo cada 10 minutos
 def cargar_datos():
     # REEMPLAZA ESTE LINK por el tuyo de Google Sheets publicado como CSV
-    url_google_sheets = "Proyecto pablo - Hoja 1.csv"
+    url_google_sheets = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
     df = pd.read_csv(url_google_sheets)
 
     df["fecha_dt"] = pd.to_datetime(df["fecha [DD/MM/YYYY]"], dayfirst=True)
