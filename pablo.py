@@ -20,7 +20,9 @@ st.markdown(
 
 
 # 1. CARGA Y LIMPIEZA DE DATOS
-@st.cache_data
+@st.cache_data(
+    ttl=600
+)
 def cargar_datos():
     # Leer el archivo con los nombres exactos de las columnas
     url_google_sheets = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
