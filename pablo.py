@@ -18,10 +18,9 @@ st.markdown(
 )
 
 
-# 1. CARGA Y LIMPIEZA DE DATOS (Desde el Google Sheets público)
+# 1. CARGA Y LIMPIEZA DE DATOS 
 @st.cache_data(ttl=600)  # Se actualiza solo cada 10 minutos
 def cargar_datos():
-    # REEMPLAZA ESTE LINK por el tuyo de Google Sheets publicado como CSV
     url_google_sheets = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
     df = pd.read_csv(url_google_sheets)
 
@@ -56,7 +55,7 @@ df_original = cargar_datos()
 st.title("📊 PANEL DE CONTROL - ENTRENAMIENTO")
 
 # ========================================================================================
-#   FILTROS GENERALES (La barra superior del mapa de tu primo)
+#   FILTROS GENERALES
 # ========================================================================================
 st.write("### 🎛️ FILTROS GENERALES")
 col_f1, col_f2 = st.columns(2)
@@ -81,7 +80,7 @@ if actividad_seleccionada != "Todas":
 st.write("---")
 
 # ========================================================================================
-#   INDICADORES PRINCIPALES (Tarjetas Grandes de KPI)
+#   INDICADORES PRINCIPALES
 # ========================================================================================
 st.write("### 【 INDICADORES PRINCIPALES 】")
 col1, col2, col3 = st.columns(3)
@@ -128,7 +127,7 @@ with col_left:
         template="plotly_dark",
         color_discrete_sequence=["#00adb5", "#ff8710", "#3f72af", "#e12345"],
     )
-    # Línea de Meta (Meta de Planta: 20 Km) como pide el mapa
+    # Línea de Meta
     fig_a.add_hline(
         y=20,
         line_dash="dash",
