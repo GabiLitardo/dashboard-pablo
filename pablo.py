@@ -1,12 +1,13 @@
 """
 Módulo: pablo.py
 Descripción: Dashboard de control analítico integrado de alto rendimiento físico.
-            Réplica exacta de componentes, KPIs, filtros y segmentación por actividad 
-            según especificaciones técnicas del mockup de producción.
+            Corrección del procesamiento de datos categóricos para unificar variantes 
+            de texto en actividades (Ciclismo y Natación) y asegurar la renderización 
+            de métricas de frecuencia cardíaca (BPM).
 Conexión: Google Sheets Cloud Engine (Real-Time Sync).
 Autor: Desarrollo de Productos de Software
 Fecha: Junio 2026
-Versión: 2.0.1
+Versión: 2.1.0
 """
 
 import pandas as pd
@@ -66,8 +67,8 @@ st.markdown(
 @st.cache_data(ttl=600)
 def cargar_y_limpiar_datos() -> pd.DataFrame:
     """
-    Carga el set de datos desde el origen en la nube (Google Sheets) y ejecuta las 
-    transformaciones, limpieza de anomalías de hardware y normalización de tipos.
+    Carga el set de datos desde el origen en la nube (Google Sheets), estandariza las
+    cadenas de texto de las actividades y normaliza las variables numéricas.
     """
     ruta_origen = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
     df = pd.read_csv(ruta_origen)
@@ -75,6 +76,14 @@ def cargar_y_limpiar_datos() -> pd.DataFrame:
     # Conversión del campo temporal con manejo de formato regional
     df["fecha_dt"] = pd.to_datetime(df["fecha [DD/MM/YYYY]"], dayfirst=True)
     df["Mes_Texto"] = df["fecha_dt"].dt.strftime("%b").str.capitalize()
+
+    # Normalización semántica de la columna actividad para resolver inconsistencias de registro
+    df["actividad_normalizada"] = df["actividad"].astype(str).str.strip().str.capitalize()
+    
+    # Homologación de variantes de texto detectadas en el set de datos origen
+    df.loc[df["actividad_normalizada"].str.contains("Ciclismo|Bici|Montar", case=False, na=False), "actividad_normalizada"] = "Ciclismo"
+    df.loc[df["actividad_normalizada"].str.contains("Natación|Nadar|Natac", case=False, na=False), "actividad_normalizada"] = "Natación"
+    df.loc[df["actividad_normalizada"].str.contains("Caminar|Caminata", case=False, na=False), "actividad_normalizada"] = "Caminar"
 
     # Sanitización de variables métricas continuas
     df["distancia_limpia"] = pd.to_numeric(
@@ -84,11 +93,11 @@ def cargar_y_limpiar_datos() -> pd.DataFrame:
         df["calorías [Kcal]"], errors="coerce"
     ).fillna(0)
 
-    # Filtrado analítico de anomalías en frecuencia cardíaca (>220 BPM)
+    # Filtrado analítico de anomalías en frecuencia cardíaca (>220 BPM y valores <= 0)
     df["bpm_limpio"] = pd.to_numeric(
         df["ritmo cardíaco [BPM]"], errors="coerce"
     )
-    df.loc[df["bpm_limpio"] > 220, "bpm_limpio"] = None
+    df.loc[(df["bpm_limpio"] > 220) | (df["bpm_limpio"] <= 0), "bpm_limpio"] = None
 
     # Agrupaciones temporales relativas para cálculos por semanas del mes
     df["Mes_Año"] = df["fecha_dt"].dt.strftime("%B %Y").str.capitalize()
@@ -115,7 +124,7 @@ with col_f1:
     mes_filtro = st.selectbox("MES:", listado_meses, index=0)
 
 with col_f2:
-    listado_actividades = ["Todas"] + list(df_maestro["actividad"].unique())
+    listado_actividades = ["Todas"] + list(df_maestro["actividad_normalizada"].unique())
     actividad_filtro = st.selectbox("ACTIVIDAD:", listado_actividades, index=0)
 
 # Aplicación de reglas de filtrado dinámico
@@ -123,7 +132,7 @@ df_filtrado = df_maestro.copy()
 if mes_filtro != "Todos":
     df_filtrado = df_filtrado[df_filtrado["Mes_Año"] == mes_filtro]
 if actividad_filtro != "Todas":
-    df_filtrado = df_filtrado[df_filtrado["actividad"] == actividad_filtro]
+    df_filtrado = df_filtrado[df_filtrado["actividad_normalizada"] == actividad_filtro]
 
 # ========================================================================================
 # SECCIÓN 1: INDICADORES PRINCIPALES (TARJETAS DE KPI SUPERIORES)
@@ -174,7 +183,7 @@ with col_g1:
         df_filtrado,
         x="Semana_Label",
         y="distancia_limpia",
-        color="actividad",
+        color="actividad_normalizada",
         labels={"distancia_limpia": "Km", "Semana_Label": ""},
         template="plotly_dark",
         color_discrete_sequence=["#00adb5", "#ff8710", "#3f72af", "#e12345"],
@@ -198,7 +207,7 @@ with col_g2:
     fig_b = px.pie(
         df_filtrado,
         values="calorias_limpias",
-        names="actividad",
+        names="actividad_normalizada",
         hole=0.5,
         template="plotly_dark",
         color_discrete_sequence=["#00adb5", "#ff8710", "#3f72af", "#e12345"],
@@ -239,7 +248,7 @@ orden_meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "O
 
 def generar_bloque_actividad(nombre_actividad: str, color_hex: str):
     """Genera las dos gráficas de evolución mensual específicas para cada actividad."""
-    df_act = df_maestro[df_maestro["actividad"] == nombre_actividad]
+    df_act = df_maestro[df_maestro["actividad_normalizada"] == nombre_actividad]
     
     df_mensual = df_act.groupby("Mes_Texto").agg(
         Total_Km=("distancia_limpia", "sum"),
@@ -269,10 +278,10 @@ def generar_bloque_actividad(nombre_actividad: str, color_hex: str):
         fig_bpm.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_bpm, use_container_width=True)
 
-with st.expander("🚲 BICICLETA / CICLISMO", expanded=True):
-    generar_bloque_actividad("Ciclismo al aire libre", "#00adb5")
+with st.expander("🚲 CICLISMO", expanded=True):
+    generar_bloque_actividad("Ciclismo", "#00adb5")
 
-with st.expander("🚶 Caminar", expanded=True):
+with st.expander("🚶 CAMINAR", expanded=True):
     generar_bloque_actividad("Caminar", "#ff8710")
 
 with st.expander("🏊 NATACIÓN", expanded=True):
