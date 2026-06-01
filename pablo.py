@@ -59,7 +59,7 @@ st.markdown(
 )
 
 # URL de edición unificada necesaria para el funcionamiento de GSheetsConnection
-URL_SHEET = "https://docs.google.com/spreadsheets/d/1xRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/edit?usp=sharing"
+URL_SHEET = "https://docs.google.com/spreadsheets/d/13Kz2HwZN_M4uCmMW-1g-dOSqiRJ5pOl74rL5hpWHF3U/edit?usp=sharing"
 
 # ========================================================================================
 # CAPA DE ACCESO A DATOS EN LA NUBE (GSHEETS API CONNECTION)
