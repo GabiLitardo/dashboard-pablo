@@ -63,8 +63,7 @@ def cargar_y_limpiar_datos() -> pd.DataFrame:
     Carga el set de datos desde el origen de datos unificado y ejecuta las transformaciones
     limpieza de anomalías de hardware y normalización de tipos.
     """
-    # En entorno de producción, reemplazar esta ruta local por la URL pública del CSV de Google Sheets
-    ruta_origen = "Proyecto pablo - Hoja 1.csv"
+    ruta_origen = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
     df = pd.read_csv(ruta_origen)
 
     # Conversión del campo temporal con manejo estricto de formato regional (Day-First)
