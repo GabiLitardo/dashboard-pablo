@@ -259,7 +259,7 @@ with col_r4:
     porcentaje_avance = min(int((volumen_km_periodo / meta_objetivo) * 100), 100)
     st.write(f"**OBJETIVO MENSUAL (Meta: {meta_objetivo} Km)**")
     st.progress(porcentaje_avance / 100.0)
-    st.caption(f"Progreso actual: {porcentaje_avance}% del objetivo cumplido.")"""
+    st.caption(f"Progreso actual: {porcentaje_avance}% del objetivo cumplido.")
 Módulo: pablo.py
 Descripción: Dashboard de control analítico integrado de alto rendimiento físico.
             Lectura unificada mediante URL directa por solicitud HTTP estándar de Pandas.
