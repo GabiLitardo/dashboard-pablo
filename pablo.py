@@ -1,6 +1,5 @@
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 # Configuración de la página estilo Dashboard Oscuro
@@ -19,19 +18,16 @@ st.markdown(
 )
 
 
-# 1. CARGA Y LIMPIEZA DE DATOS
-@st.cache_data(
-    ttl=600
-)
+# 1. CARGA Y LIMPIEZA DE DATOS (Desde el Google Sheets público)
+@st.cache_data(ttl=600)  # Se actualiza solo cada 10 minutos
 def cargar_datos():
-    # Leer el archivo con los nombres exactos de las columnas
-    url_google_sheets = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
+    # REEMPLAZA ESTE LINK por el tuyo de Google Sheets publicado como CSV
+    url_google_sheets = "Proyecto pablo - Hoja 1.csv"
     df = pd.read_csv(url_google_sheets)
 
-    # Convertir fecha
     df["fecha_dt"] = pd.to_datetime(df["fecha [DD/MM/YYYY]"], dayfirst=True)
 
-    # Limpiar columnas numéricas
+    # Creamos columnas limpias
     df["distancia_limpia"] = pd.to_numeric(
         df["distancia [Km]"], errors="coerce"
     ).fillna(0)
@@ -39,15 +35,13 @@ def cargar_datos():
         df["calorías [Kcal]"], errors="coerce"
     ).fillna(0)
 
-    # Filtrar el ritmo cardíaco (eliminamos el error de 998 BPM para no romper el promedio)
     df["bpm_limpio"] = pd.to_numeric(
         df["ritmo cardíaco [BPM]"], errors="coerce"
     )
-    df.loc[df["bpm_limpio"] > 220, "bpm_limpio"] = (
-        None  # Limita pulsaciones imposibles
-    )
+    df.loc[df["bpm_limpio"] > 220, "bpm_limpio"] = None
 
-    # Agrupar por semanas para los gráficos
+    # Extraer Mes y Año para los filtros del mapa
+    df["Mes_Año"] = df["fecha_dt"].dt.strftime("%B %Y").str.capitalize()
     df["Semana"] = df["fecha_dt"].dt.isocalendar().week
     df["Semana_Label"] = "Sem " + (df["Semana"] - df["Semana"].min() + 1).astype(
         str
@@ -56,39 +50,75 @@ def cargar_datos():
     return df
 
 
-df = cargar_datos()
+df_original = cargar_datos()
 
 # --- ENCABEZADO ---
-st.title("📊 PANEL DE CONTROL - ENTRAINAMIENTO")
-st.write(
-    f"Historial de progresos de Pablo — {df['actividad'].count()} actividades registradas"
-)
+st.title("📊 PANEL DE CONTROL - ENTRENAMIENTO")
+
+# ========================================================================================
+#   FILTROS GENERALES (La barra superior del mapa de tu primo)
+# ========================================================================================
+st.write("### 🎛️ FILTROS GENERALES")
+col_f1, col_f2 = st.columns(2)
+
+with col_f1:
+    meses_disponibles = ["Todos"] + list(df_original["Mes_Año"].unique())
+    mes_seleccionado = st.selectbox("Seleccionar Mes:", meses_disponibles)
+
+with col_f2:
+    actividades_disponibles = ["Todas"] + list(df_original["actividad"].unique())
+    actividad_seleccionada = st.selectbox(
+        "Seleccionar Actividad:", actividades_disponibles
+    )
+
+# Aplicar filtros al DataFrame
+df = df_original.copy()
+if mes_seleccionado != "Todos":
+    df = df[df["Mes_Año"] == mes_seleccionado]
+if actividad_seleccionada != "Todas":
+    df = df[df["actividad"] == actividad_seleccionada]
+
 st.write("---")
 
-# --- FILAS DE METRICAS PRINCIPALES (KPIs) ---
+# ========================================================================================
+#   INDICADORES PRINCIPALES (Tarjetas Grandes de KPI)
+# ========================================================================================
+st.write("### 【 INDICADORES PRINCIPALES 】")
 col1, col2, col3 = st.columns(3)
+
+km_totales = df["distancia_limpia"].sum()
+bpm_promedio = df["bpm_limpio"].mean()
+calorias_totales = df["calorias_limpias"].sum()
+
 with col1:
-    st.metric(
-        label="KM TOTALES ACUMULADOS", value=f"{df['distancia_limpia'].sum():.2f} Km"
-    )
+    # Lógica de estatus basado en el mapa
+    status_km = "OPTIMO" if km_totales > 20 else "EN PROGRESO"
+    st.metric(label="KM TOTALES (PERIODO)", value=f"{km_totales:.2f} Km")
+    st.caption(f"Status: **{status_km}**")
+
 with col2:
-    st.metric(
-        label="RITMO CARDÍACO PROMEDIO",
-        value=f"{int(df['bpm_limpio'].mean())} BPM",
-    )
+    # Lógica de estatus cardíaco
+    status_bpm = "ZONA GRASA" if 100 <= bpm_promedio <= 130 else "CARDIO"
+    val_bpm = f"{int(bpm_promedio)} BPM" if not pd.isna(bpm_promedio) else "0 BPM"
+    st.metric(label="RITMO CARDÍACO PROMEDIO", value=val_bpm)
+    st.caption(f"Status: **{status_bpm}**")
+
 with col3:
     st.metric(
-        label="CALORÍAS ACUMULADAS TOTALES",
-        value=f"{df['calorias_limpias'].sum():,.0f} Kcal",
+        label="CALORÍAS ACUMULADAS", value=f"{calorias_totales:,.0f} Kcal"
     )
+    st.caption("Status: **Semana de Cierre**")
 
 st.write("---")
 
-# --- GRÁFICOS PRINCIPALES ---
+# ========================================================================================
+#   GRÁFICOS DE CONTROL
+# ========================================================================================
+st.write("### 【 GRÁFICOS DE CONTROL 】")
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.subheader("Gráfico A: Volumen de Kilómetros por Semana")
+    st.subheader("GRÁFICO A: Volumen de Kilómetros por Semana")
     fig_a = px.bar(
         df,
         x="Semana_Label",
@@ -98,13 +128,20 @@ with col_left:
         template="plotly_dark",
         color_discrete_sequence=["#00adb5", "#ff8710", "#3f72af", "#e12345"],
     )
+    # Línea de Meta (Meta de Planta: 20 Km) como pide el mapa
+    fig_a.add_hline(
+        y=20,
+        line_dash="dash",
+        line_color="red",
+        annotation_text="Meta de Planta: 20 Km",
+    )
     fig_a.update_layout(
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
     )
     st.plotly_chart(fig_a, use_container_width=True)
 
 with col_right:
-    st.subheader("Gráfico B: Distribución de Carga (Esfuerzo por Calorías)")
+    st.subheader("GRÁFICO B: Distribución de Carga (Eficiencia)")
     fig_b = px.pie(
         df,
         values="calorias_limpias",
@@ -117,43 +154,3 @@ with col_right:
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
     )
     st.plotly_chart(fig_b, use_container_width=True)
-
-st.write("---")
-
-# --- GRÁFICO DE PROGRESO ACUMULADO ---
-st.subheader("Evolución de Kilómetros Acumulados")
-df_sorted = df.sort_values("fecha_dt")
-df_sorted["KM_Acumulados"] = df_sorted["distancia_limpia"].cumsum()
-
-fig_c = px.line(
-    df_sorted,
-    x="fecha_dt",
-    y="KM_Acumulados",
-    labels={"fecha_dt": "Fecha de Entrenamiento", "KM_Acumulados": "KM Totales"},
-    template="plotly_dark",
-    markers=True,
-)
-fig_c.update_traces(line=dict(color="#00f2fe", width=3))
-fig_c.update_layout(
-    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
-)
-st.plotly_chart(fig_c, use_container_width=True)
-
-st.write("---")
-
-# --- ANÁLISIS DETALLADO POR ACTIVIDAD ---
-st.subheader("Análisis de Pulsaciones (BPM) por Disciplina")
-fig_bpm = px.line(
-    df[df["bpm_limpio"].notna()],
-    x="fecha_dt",
-    y="bpm_limpio",
-    color="actividad",
-    facet_col="actividad",
-    labels={"bpm_limpio": "Pulsaciones (BPM)", "fecha_dt": "Fecha"},
-    template="plotly_dark",
-    markers=True,
-)
-fig_bpm.update_layout(
-    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
-)
-st.plotly_chart(fig_bpm, use_container_width=True)
