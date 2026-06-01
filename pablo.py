@@ -37,7 +37,6 @@ st.markdown(
 
 # URL pública de lectura y edición de la base de datos en Google Sheets
 URL_SHEET = "https://docs.google.com/spreadsheets/d/1xRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/edit?usp=sharing"
-
 # ========================================================================================
 # CAPA DE ACCESO A DATOS EN LA NUBE (GSHEETS API CONNECTION)
 # ========================================================================================
