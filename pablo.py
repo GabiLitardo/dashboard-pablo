@@ -1,10 +1,10 @@
 """
 Módulo: pablo.py
-Descripción: Dashboard de control analítico integrado con sistema de captura
-            de datos persistente via API hacia Google Sheets (GSheets Connection).
+Descripción: Dashboard de control analítico integrado de alto rendimiento físico.
+            Conexión bidireccional (Lectura/Escritura) con Google Sheets API.
 Autor: Desarrollo de Productos de Software
 Fecha: Junio 2026
-Versión: 4.0.0
+Versión: 4.0.1
 """
 
 import pandas as pd
@@ -21,58 +21,95 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Inyección de estilos CSS para la personalización del tema oscuro (Cyberpunk Dark Mode)
 st.markdown(
     """
     <style>
-    .stApp { background-color: #0b111e; color: #ffffff; }
-    h1, h2, h3, h4 { color: #00f2fe !important; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-    div[data-testid="stMetricValue"] { color: #00f2fe !important; font-size: 2.2rem !important; font-weight: 700; }
-    div[data-testid="stMetricLabel"] { color: #8fa0bc !important; }
-    .stSelectbox label { color: #8fa0bc !important; }
-    hr { border-color: #1e293b !important; }
+    .stApp { 
+        background-color: #0b111e; 
+        color: #ffffff; 
+    }
+    h1, h2, h3, h4 { 
+        color: #00f2fe !important; 
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    div[data-testid="stMetricValue"] { 
+        color: #00f2fe !important; 
+        font-size: 2.2rem !important;
+        font-weight: 700;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #8fa0bc !important;
+    }
+    .stSelectbox label {
+        color: #8fa0bc !important;
+    }
+    div[data-testid="stCard"] {
+        background-color: #11192a !important;
+        border: 1px solid #1e293b !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+    }
+    hr {
+        border-color: #1e293b !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# URL pública de lectura y edición de la base de datos en Google Sheets
+# URL de edición unificada necesaria para el funcionamiento de GSheetsConnection
 URL_SHEET = "https://docs.google.com/spreadsheets/d/1xRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/edit?usp=sharing"
+
 # ========================================================================================
 # CAPA DE ACCESO A DATOS EN LA NUBE (GSHEETS API CONNECTION)
 # ========================================================================================
-# Inicialización de la conexión segura con la API de Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+
+@st.cache_data(ttl=0)
 def cargar_y_limpiar_datos() -> pd.DataFrame:
-    """Lee las filas en tiempo real desde Google Sheets y ejecuta el pipeline de limpieza."""
-    df = conn.read(spreadsheet=URL_SHEET, ttl="0d") # ttl="0d" para forzar lectura síncrona sin caché viejo
-    
+    """
+    Descarga el set de datos en tiempo real desde Google Sheets y ejecuta las
+    transformaciones, normalización de texto y sanitización de tipos.
+    """
+    df = conn.read(spreadsheet=URL_SHEET)
+
     if df.empty:
         return pd.DataFrame()
 
+    # Conversión del campo temporal con manejo de formato regional
     df["fecha_dt"] = pd.to_datetime(df["fecha [DD/MM/YYYY]"], format="%d/%m/%Y", errors="coerce")
     df = df.dropna(subset=["fecha_dt"])
     df["Mes_Texto"] = df["fecha_dt"].dt.strftime("%b").str.capitalize()
 
+    # Normalización semántica de la columna actividad
     df["actividad_normalizada"] = df["actividad"].astype(str).str.strip().str.capitalize()
     df.loc[df["actividad_normalizada"].str.contains("Ciclismo|Bici|Montar", case=False, na=False), "actividad_normalizada"] = "Ciclismo"
     df.loc[df["actividad_normalizada"].str.contains("Natación|Nadar|Natac", case=False, na=False), "actividad_normalizada"] = "Natación"
     df.loc[df["actividad_normalizada"].str.contains("Caminar|Caminata", case=False, na=False), "actividad_normalizada"] = "Caminar"
 
+    # Sanitización de variables métricas continuas
     df["distancia_limpia"] = pd.to_numeric(df["distancia [Km]"], errors="coerce").fillna(0)
     df["calorias_limpias"] = pd.to_numeric(df["calorías [Kcal]"], errors="coerce").fillna(0)
 
+    # Filtrado analítico de anomalías en frecuencia cardíaca (>220 BPM y valores <= 0)
     df["bpm_limpio"] = pd.to_numeric(df["ritmo cardíaco [BPM]"], errors="coerce")
     df.loc[(df["bpm_limpio"] > 220) | (df["bpm_limpio"] <= 0), "bpm_limpio"] = None
 
+    # Agrupaciones temporales relativas para cálculos por semanas del mes
     df["Mes_Año"] = df["fecha_dt"].dt.strftime("%B %Y").str.capitalize()
     df["Semana"] = df["fecha_dt"].dt.isocalendar().week
     df["Semana_Label"] = "Sem " + (df["Semana"] - df["Semana"].min() + 1).astype(str)
 
     return df
 
+
+# Inicialización del DataFrame maestro
+df_maestro = cargar_y_limpiar_datos()
+
 # ========================================================================================
-# COMPONENTE: FORMULARIO DE INSERCIÓN DIRECTA A GOOGLE SHEETS
+# COMPONENTE: FORMULARIO DE INSERCIÓN DIRECTA A GOOGLE SHEETS (PANEL LATERAL)
 # ========================================================================================
 with st.sidebar:
     st.write("## 📝 REGISTRAR ENTRENAMIENTO")
@@ -93,7 +130,6 @@ with st.sidebar:
         boton_enviar = st.form_submit_button("Subir a Google Sheets")
 
         if boton_enviar:
-            # Re-lectura del estado actual de la hoja para hacer el append correcto
             df_actual = conn.read(spreadsheet=URL_SHEET)
             
             nueva_fila = pd.DataFrame([{
@@ -106,21 +142,14 @@ with st.sidebar:
             }])
             
             df_consolidado = pd.concat([df_actual, nueva_fila], ignore_index=True)
-            # Escritura via API hacia el almacenamiento persistente de Google
             conn.update(spreadsheet=URL_SHEET, data=df_consolidado)
             st.success("¡Fila añadida a Google Sheets con éxito!")
-            st.cache_data.clear() # Limpia la caché para forzar renderizado inmediato
+            st.cache_data.clear()
             st.rerun()
 
-# Carga de datos procesados
-df_maestro = cargar_y_limpiar_datos()
-
 # ========================================================================================
-# RENDERS DE COMPONENTES VISUALES (DASHBOARD)
+# COMPONENTE: CONTROLES DE SEGMENTACIÓN (FILTROS)
 # ========================================================================================
-st.title("PANEL DE CONTROL – ENTRENAMIENTO")
-st.write("---")
-
 if df_maestro.empty:
     st.info("No se han podido recuperar registros desde Google Sheets.")
     st.stop()
@@ -140,7 +169,9 @@ if mes_filtro != "Todos":
 if actividad_filtro != "Todas":
     df_filtrado = df_filtrado[df_filtrado["actividad_normalizada"] == actividad_filtro]
 
-# --- SECCIÓN KPIs ---
+# ========================================================================================
+# SECCIÓN 1: INDICADORES PRINCIPALES (TARJETAS DE KPI SUPERIORES)
+# ========================================================================================
 st.write("### 【 INDICADORES PRINCIPALES 】")
 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
 
@@ -168,7 +199,9 @@ with col_kpi3:
 
 st.write("---")
 
-# --- SECCIÓN GRÁFICOS DE CONTROL ---
+# ========================================================================================
+# SECCIÓN 2: GRÁFICOS DE CONTROL (BLOQUE INTERMEDIO PRINCIPAL)
+# ========================================================================================
 st.write("### 【 GRÁFICOS DE CONTROL 】")
 col_g1, col_g2, col_g3 = st.columns([1.5, 1.2, 1.3])
 
@@ -203,9 +236,12 @@ with col_g3:
 
 st.write("---")
 
-# --- SECCIÓN ANÁLISIS DETALLADO ---
+# ========================================================================================
+# SECCIÓN 3: ANÁLISIS POR ACTIVIDAD (HISTÓRICOS MENSUALES Y TENDENCIAS BPM)
+# ========================================================================================
 st.write("### 【 ANÁLISIS POR ACTIVIDAD 】")
 orden_meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
 
 def generar_bloque_actividad(nombre_actividad: str, color_hex: str):
     df_act = df_maestro[df_maestro["actividad_normalizada"] == nombre_actividad]
@@ -231,6 +267,7 @@ def generar_bloque_actividad(nombre_actividad: str, color_hex: str):
         fig_bpm.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_bpm, use_container_width=True)
 
+
 with st.expander("🚲 CICLISMO", expanded=True):
     generar_bloque_actividad("Ciclismo", "#00adb5")
 
@@ -242,7 +279,9 @@ with st.expander("🏊 NATACIÓN", expanded=True):
 
 st.write("---")
 
-# --- SECCIÓN PIE DE PÁGINA ---
+# ========================================================================================
+# SECCIÓN 4: RESUMEN GENERAL Y AVANCE DE OBJETIVO MENSUAL (PIE DE PÁGINA)
+# ========================================================================================
 st.write("### 【 RESUMEN GENERAL Y OBJETIVO MENSUAL 】")
 col_r1, col_r2, col_r3, col_r4 = st.columns(4)
 
