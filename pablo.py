@@ -1,17 +1,18 @@
 """
 Módulo: pablo.py
 Descripción: Dashboard de control analítico integrado de alto rendimiento físico.
-            Lectura via GSheets Connection y Escritura segura mediante HTTP Post (Google Forms).
+            Lectura unificada mediante URL directa por solicitud HTTP estándar de Pandas,
+            evitando fallas de inicialización del backend de GSheetsConnection, 
+            y escritura segura mediante HTTP POST (Google Forms).
 Autor: Desarrollo de Productos de Software
 Fecha: Junio 2026
-Versión: 5.0.1
+Versión: 5.1.0
 """
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 import requests
-from streamlit_gsheets import GSheetsConnection
 
 # ========================================================================================
 # CONFIGURACIÓN DE LA INTERFAZ DE USUARIO Y CONFIGURACIÓN ESTÁTICA
@@ -48,19 +49,16 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# URL de lectura de la hoja de cálculo de Google Sheets
-URL_SHEET = "https://docs.google.com/spreadsheets/d/1xRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/edit?usp=sharing"
+# URL pública de exportación de datos (Pandas engine friendly)
+URL_RAW_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRhX2B4OK7X7XRhzlwrX5l9myTA_ABoYSVA3hoham6crMfEY9nUkeQ3kz-tFaKedWHXtPyWIfuLFws6/pub?gid=0&single=true&output=csv"
 
 # ========================================================================================
-# CAPA DE ACCESO A DATOS EN LA NUBE (GSHEETS API CONNECTION)
+# CAPA DE ACCESO A DATOS (PANDAS HTTP ENGINE)
 # ========================================================================================
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-
 @st.cache_data(ttl=10)
 def cargar_y_limpiar_datos() -> pd.DataFrame:
-    """Descarga el set de datos en tiempo real desde Google Sheets y ejecuta el pipeline de limpieza."""
-    df = conn.read(spreadsheet=URL_SHEET)
+    """Descarga el set de datos en tiempo real mediante HTTP y ejecuta el pipeline de limpieza."""
+    df = pd.read_csv(URL_RAW_CSV)
 
     if df.empty:
         return pd.DataFrame()
@@ -148,7 +146,7 @@ with st.sidebar:
 # COMPONENTE: CONTROLES DE SEGMENTACIÓN (FILTROS)
 # ========================================================================================
 if df_maestro.empty:
-    st.info("No se han podido recuperar registros desde Google Sheets.")
+    st.info("No se han podido recuperar registros desde la base de datos.")
     st.stop()
 
 col_f1, col_f2 = st.columns(2)
